@@ -13,6 +13,23 @@
 python3 cdr_demo.py
 ```
 
+## 依赖环境
+
+当前基础脚本只依赖 Python 标准库；为了后续扩展 NumPy 版本、绘制更丰富的曲线和做数据分析，项目虚拟环境已安装：
+
+- `numpy`
+- `matplotlib`
+- `scipy`
+- `pandas`
+
+重新安装依赖：
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt
+```
+
 可选参数：
 
 ```bash
