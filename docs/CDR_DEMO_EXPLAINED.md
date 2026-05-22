@@ -1,10 +1,10 @@
-# CDR Demo 基础版说明
+# CDR Demo 纯基础版说明
 
-本文说明当前基础版 `cdr_demo.py`。这个版本不再使用复杂工程结构，只保留一个主程序文件，并且只使用 `numpy` 一个第三方库。
+本文说明当前 `cdr_demo.py`。这个版本不使用 `numpy`，也不使用任何第三方库，只使用 Python 标准库。
 
 ## 1. 这个程序做什么
 
-程序模拟一个接收端如何从数据流中恢复采样时钟。
+程序模拟接收端如何从数据流中恢复采样时钟。
 
 它会做三件事：
 
@@ -16,9 +16,8 @@
 
 ```text
 cdr_demo.py                  # 主程序，所有核心逻辑都在这里
-requirements.txt             # 只保留 numpy
 README.md                    # 快速运行说明
-UPDATE_LOG.md                # 每次提交前都要更新
+UPDATE_LOG.md                # 每次提交前都要更新，并写明更新时间
 docs/CDR_DEMO_EXPLAINED.md   # 当前说明文档
 docs/images/cdr_loop.svg     # CDR 环路图
 docs/images/alexander_pd.svg # Alexander 相位检测器图
@@ -29,6 +28,7 @@ outputs/                     # 运行生成物，不提交
 
 - 初学阶段只看 `cdr_demo.py`。
 - 修改程序后同步更新 `UPDATE_LOG.md`。
+- 每条更新记录写清楚更新时间。
 - 运行生成的 CSV、JSON、SVG 都放在 `outputs/`。
 - `outputs/` 已经写入 `.gitignore`，不需要提交。
 
@@ -105,11 +105,18 @@ bit = 1  -> level = +1
 bit = 0  -> level = -1
 ```
 
-代码：
+代码里用最基础的列表和 `if` 实现：
 
 ```python
-bits = rng.integers(0, 2, size=n_bits)
-levels = np.where(bits == 1, 1.0, -1.0)
+bits = []
+levels = []
+for _ in range(n_bits):
+    bit = rng.randrange(2)
+    bits.append(bit)
+    if bit == 1:
+        levels.append(1.0)
+    else:
+        levels.append(-1.0)
 ```
 
 ### 6.2 真实 UI
@@ -139,13 +146,13 @@ random_jitter      # 随机高斯抖动
 然后用一阶低通模拟有限带宽：
 
 ```text
-y = y + alpha * (raw[i] - y)
+y = y + alpha * (raw - y)
 ```
 
 最后加入高斯噪声：
 
 ```text
-samples = samples + random_noise
+y_with_noise = y + rng.gauss(0.0, noise_std)
 ```
 
 ## 7. 固定采样为什么会失败
@@ -180,7 +187,7 @@ CDR 的核心函数是 `run_cdr()`。
 ```python
 if previous_decision is not None and decision != previous_decision:
     edge_sample = linear_interp(samples, t - 0.5 * period)
-    error = np.sign((previous_decision - decision) * edge_sample)
+    error = sign((previous_decision - decision) * edge_sample)
     period = period + freq_gain * error
 ```
 
@@ -238,7 +245,7 @@ cdr:   BER=..., period_error=...
 项目维护规则保持不变：
 
 1. 每次提交前更新 `UPDATE_LOG.md`。
-2. 提交信息要说明具体改动点。
-3. 运行输出不提交。
-4. 依赖变化同步更新 `requirements.txt`。
+2. 每次更新记录都要写明更新时间。
+3. 提交信息要说明具体改动点。
+4. 运行输出不提交。
 5. 代码结构变化同步更新 README 和本文档。

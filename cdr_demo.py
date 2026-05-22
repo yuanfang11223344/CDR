@@ -1,12 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-CDR（Clock and Data Recovery，时钟数据恢复）基础版 demo。
+CDR（Clock and Data Recovery，时钟数据恢复）纯基础版 demo。
 
-这个版本故意写得“朴素”一些：
-- 只使用一个第三方库：numpy。
-- 不拆复杂包结构，核心逻辑都放在本文件里。
-- 多用普通函数、列表、字典和清晰注释，便于逐行理解。
+这个文件只使用 Python 标准库，不需要 numpy，也不需要任何第三方包。
 
 运行：
     python3 cdr_demo.py
@@ -20,15 +17,16 @@ CDR（Clock and Data Recovery，时钟数据恢复）基础版 demo。
 import argparse
 import csv
 import json
+import math
+import random
+import statistics
 from pathlib import Path
-
-import numpy as np
 
 
 def parse_args():
     """读取命令行参数。没有传参数时使用默认值。"""
 
-    parser = argparse.ArgumentParser(description="Simple NumPy CDR demo.")
+    parser = argparse.ArgumentParser(description="Simple pure-Python CDR demo.")
     parser.add_argument("--bits", type=int, default=2500, help="仿真的 bit 数")
     parser.add_argument("--sps", type=float, default=16.0, help="名义每 UI 的 ADC 采样点数")
     parser.add_argument("--ppm", type=float, default=1800.0, help="发送端相对频偏，单位 ppm")
@@ -39,11 +37,21 @@ def parse_args():
     return parser.parse_args()
 
 
+def sign(value):
+    """返回符号：正数返回 1，负数返回 -1，0 返回 0。"""
+
+    if value > 0:
+        return 1.0
+    if value < 0:
+        return -1.0
+    return 0.0
+
+
 def linear_interp(samples, t):
     """
     在小数采样点 t 处读取波形。
 
-    ADC 波形 samples 只在整数下标处有值，但 CDR 的采样时刻 t 会不断微调，
+    samples 只在整数下标处有值，但 CDR 的采样时刻 t 会不断微调，
     所以 t 往往不是整数。这里用最简单的线性插值：
 
         y(t) = (1 - frac) * samples[i] + frac * samples[i + 1]
@@ -54,7 +62,7 @@ def linear_interp(samples, t):
     if t < 0 or t >= len(samples) - 1:
         return float("nan")
 
-    i = int(np.floor(t))
+    i = int(math.floor(t))
     frac = t - i
     return (1.0 - frac) * samples[i] + frac * samples[i + 1]
 
@@ -79,7 +87,7 @@ def generate_signal(n_bits, nominal_sps, ppm_offset, noise_std, seed):
     """
     生成一段带频偏、抖动、噪声和有限带宽的 NRZ/PAM2 信号。
 
-    返回一个字典，里面放后续函数需要的数据：
+    返回一个字典：
     - bits: 原始 0/1 数据
     - levels: 映射后的 -1/+1 电平
     - boundaries: 每个 bit 的真实边界
@@ -87,11 +95,18 @@ def generate_signal(n_bits, nominal_sps, ppm_offset, noise_std, seed):
     - true_ui: 真实 UI 长度，单位 ADC samples
     """
 
-    rng = np.random.default_rng(seed)
+    rng = random.Random(seed)
 
     # 1. 生成随机 bit，并映射为 NRZ/PAM2 电平。
-    bits = rng.integers(0, 2, size=n_bits)
-    levels = np.where(bits == 1, 1.0, -1.0)
+    bits = []
+    levels = []
+    for _ in range(n_bits):
+        bit = rng.randrange(2)
+        bits.append(bit)
+        if bit == 1:
+            levels.append(1.0)
+        else:
+            levels.append(-1.0)
 
     # 2. 设置发送端真实 UI。
     # ppm_offset 表示发送端和接收端名义时钟之间的频偏。
@@ -100,35 +115,39 @@ def generate_signal(n_bits, nominal_sps, ppm_offset, noise_std, seed):
 
     # 3. 生成每个 bit 的真实边界。
     # 这里同时加入低频正弦抖动和随机抖动，让信号更接近真实链路。
-    k = np.arange(n_bits + 1)
-    sinusoidal_jitter = 0.055 * nominal_sps * np.sin(2.0 * np.pi * k / 310.0)
-    random_jitter = rng.normal(0.0, 0.018 * nominal_sps, size=n_bits + 1)
-    boundaries = start + k * true_ui + sinusoidal_jitter + random_jitter
+    boundaries = []
+    for k in range(n_bits + 1):
+        sinusoidal_jitter = 0.055 * nominal_sps * math.sin(2.0 * math.pi * k / 310.0)
+        random_jitter = rng.gauss(0.0, 0.018 * nominal_sps)
+        boundary = start + k * true_ui + sinusoidal_jitter + random_jitter
 
-    # 防止极端随机抖动让边界倒序。
-    for i in range(1, len(boundaries)):
-        min_next = boundaries[i - 1] + 0.72 * nominal_sps
-        if boundaries[i] < min_next:
-            boundaries[i] = min_next
+        # 防止极端随机抖动让边界倒序。
+        if boundaries:
+            min_next = boundaries[-1] + 0.72 * nominal_sps
+            if boundary < min_next:
+                boundary = min_next
 
-    # 4. 在整数 ADC 采样点上生成理想 NRZ 波形。
-    n_samples = int(np.ceil(boundaries[-1] + 20.0 * nominal_sps))
-    sample_times = np.arange(n_samples)
-    bit_index = np.searchsorted(boundaries, sample_times, side="right") - 1
-    bit_index = np.clip(bit_index, 0, n_bits - 1)
-    raw = levels[bit_index]
+        boundaries.append(boundary)
 
-    # 5. 用一阶低通模拟有限带宽。
-    # alpha 越小，边沿越慢；alpha 越大，越接近理想方波。
+    # 4. 在整数 ADC 采样点上生成接收波形。
+    n_samples = int(math.ceil(boundaries[-1] + 20.0 * nominal_sps))
+    samples = []
+    bit_index = 0
     alpha = 0.38
-    samples = np.empty(n_samples)
-    y = raw[0]
-    for i in range(n_samples):
-        y = y + alpha * (raw[i] - y)
-        samples[i] = y
+    y = levels[0]
 
-    # 6. 加入高斯噪声。
-    samples = samples + rng.normal(0.0, noise_std, size=n_samples)
+    for sample_time in range(n_samples):
+        while bit_index + 1 < n_bits and sample_time >= boundaries[bit_index + 1]:
+            bit_index += 1
+
+        raw = levels[bit_index]
+
+        # 一阶低通：模拟有限带宽，边沿不会无限快。
+        y = y + alpha * (raw - y)
+
+        # 加入高斯噪声。
+        y_with_noise = y + rng.gauss(0.0, noise_std)
+        samples.append(y_with_noise)
 
     return {
         "bits": bits,
@@ -228,7 +247,7 @@ def run_cdr(signal, initial_phase_ui):
             # Alexander 相位检测器：
             # error > 0：本地时钟偏早，下一次采样往后推
             # error < 0：本地时钟偏晚，下一次采样往前拉
-            error = np.sign((previous_decision - decision) * edge_sample)
+            error = sign((previous_decision - decision) * edge_sample)
 
             # 用 error 慢慢修正本地周期估计。
             period = period + freq_gain * error
@@ -270,21 +289,38 @@ def summarize(rows, true_ui, settle_bits=300):
             "updates": 0,
         }
 
-    decisions = np.array([row["decision"] for row in rows])
-    actual = np.array([row["actual"] for row in rows])
-    phase = np.array([row["phase_ui"] for row in rows])
-    period = np.array([row["period"] for row in rows])
-    errors = np.array([row["error"] for row in rows])
+    wrong_count = 0
+    phase_values = []
+    period_values = []
+    update_count = 0
 
-    mean_period = float(np.mean(period))
+    for row in rows:
+        if row["decision"] != row["actual"]:
+            wrong_count += 1
+        phase_values.append(row["phase_ui"])
+        period_values.append(row["period"])
+        if row["error"] != 0.0:
+            update_count += 1
+
+    ber = wrong_count / len(rows)
+    abs_phase = [abs(value) for value in phase_values]
+    median_abs_phase = statistics.median(abs_phase)
+
+    phase_square_sum = 0.0
+    for value in phase_values:
+        phase_square_sum += value * value
+    rms_phase = math.sqrt(phase_square_sum / len(phase_values))
+
+    mean_period = sum(period_values) / len(period_values)
+    period_error_ppm = (mean_period / true_ui - 1.0) * 1e6
 
     return {
-        "ber": float(np.mean(decisions != actual)),
-        "median_abs_phase_ui": float(np.median(np.abs(phase))),
-        "rms_phase_ui": float(np.sqrt(np.mean(phase * phase))),
+        "ber": ber,
+        "median_abs_phase_ui": median_abs_phase,
+        "rms_phase_ui": rms_phase,
         "mean_period": mean_period,
-        "period_error_ppm": float((mean_period / true_ui - 1.0) * 1e6),
-        "updates": int(np.count_nonzero(errors)),
+        "period_error_ppm": period_error_ppm,
+        "updates": update_count,
     }
 
 

@@ -1,12 +1,13 @@
 # CDR
 
-这是一个基础版 CDR（Clock and Data Recovery，时钟数据恢复）仿真 demo。
+这是一个纯基础版 CDR（Clock and Data Recovery，时钟数据恢复）仿真 demo。
 
 当前版本刻意保持简单：
 
 - 只有一个主程序文件：`cdr_demo.py`
-- 只使用一个第三方库：`numpy`
-- 不使用 `scipy`、`pandas`、`matplotlib`
+- 不使用 `numpy`
+- 不使用任何第三方库
+- 只使用 Python 标准库
 - 用中文注释解释每一步
 - 运行输出放在 `outputs/`，该目录不提交到 git
 
@@ -14,25 +15,16 @@
 
 ```text
 cdr_demo.py                  # 主程序，包含信号生成、固定采样、CDR、输出
-requirements.txt             # 只记录 numpy 依赖
 README.md                    # 项目快速说明
-UPDATE_LOG.md                # 每次提交前都要更新
+UPDATE_LOG.md                # 每次提交前都要更新，并记录更新时间
 docs/CDR_DEMO_EXPLAINED.md   # CDR 原理和代码说明
 docs/images/                 # 原理图
 outputs/                     # 运行输出，git 忽略
 ```
 
-## 安装依赖
+## 依赖
 
-```bash
-python3 -m pip install numpy==2.4.6
-```
-
-你的本机已经可以直接导入 `numpy`。如果换电脑，可以用：
-
-```bash
-python3 -m pip install -r requirements.txt
-```
+不需要安装任何第三方依赖。系统自带 Python 3 即可运行。
 
 ## 运行
 
@@ -54,4 +46,4 @@ python3 cdr_demo.py --bits 5000 --sps 16 --ppm 3000 --noise 0.12 --seed 9
 
 ## 维护约定
 
-每次提交都需要同步更新 `UPDATE_LOG.md`。提交信息要说明具体改动点，不要只写 `update` 或 `initial commit`。
+每次提交都需要同步更新 `UPDATE_LOG.md`，并写明更新时间。提交信息要说明具体改动点，不要只写 `update` 或 `initial commit`。
