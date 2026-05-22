@@ -4,6 +4,16 @@
 
 ## 2026-05-22
 
+### 回退为 NumPy 基础版单文件 demo
+
+- 按“看得懂、基础语法优先”的要求，将项目从多模块工程版回退为单文件 `cdr_demo.py`。
+- 只保留 `numpy` 作为第三方依赖，移除项目中对 `scipy`、`pandas`、`matplotlib` 的使用。
+- 删除 `cdr/` 包结构和 `pyproject.toml`，不再保留 `cdr-demo` 命令行包装。
+- 重写 `cdr_demo.py`，用中文注释解释信号生成、固定采样、Alexander CDR、统计和 SVG 输出。
+- 更新 `requirements.txt`，只保留 `numpy==2.4.6`。
+- 重写 `README.md` 和 `docs/CDR_DEMO_EXPLAINED.md`，用更基础的语言说明 CDR 原理、文件构成和运行方式。
+- 保留 `outputs/` 输出目录规则和每次提交必须更新 `UPDATE_LOG.md` 的 git 维护逻辑。
+
 ### 重构为科学计算版 CDR 工程
 
 - 将原单文件实现拆分为 `cdr/` 包，新增配置、信号生成、CDR 恢复、绘图和 CLI 编排模块。
